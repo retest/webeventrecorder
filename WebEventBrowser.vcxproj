@@ -14,11 +14,13 @@
     <ClCompile Include="cef_app.cpp" />
     <ClCompile Include="cef_handler.cpp" />
     <ClCompile Include="json_schema.cpp" />
+    <ClCompile Include="websock_srv.cpp" />
     <ClCompile Include="web_event_browser.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cef_app.h" />
     <ClInclude Include="cef_handler.h" />
+    <ClInclude Include="websock_srv.h" />
     <ClInclude Include="web_event_browser.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -50,18 +52,19 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>$(WXWIN)\include\msvc;$(WXWIN)\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(WXWIN)\lib\vc_lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)\wxwidgets\include\msvc;$(ProjectDir)\wxwidgets\include;$(ProjectDir);$(ProjectDir)\asio;$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>__WXMSW__;_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WXUSINGDLL;wxMSVC_VERSION_AUTO;__WXMSW__;_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>$(SolutionDir)\lib\libcef.lib;$(SolutionDir)\lib\libcef_dll_wrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)\wxwidgets\lib\vc110_dll</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

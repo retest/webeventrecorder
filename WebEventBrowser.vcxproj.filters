@@ -27,6 +27,9 @@
     <ClCompile Include="json_schema.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="websock_srv.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="web_event_browser.h">
@@ -36,6 +39,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="cef_handler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="websock_srv.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

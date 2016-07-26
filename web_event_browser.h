@@ -71,6 +71,9 @@
 // ----------------------------------------------------------------------------
 
 #include "blue.xpm"
+#include "green.xpm"
+#include "red.xpm"
+
 
 // the application icon (under Windows it is in resources and even
 // though we could still include the XPM here it would be unused)
@@ -81,6 +84,7 @@
 // Forward classes
 class MainFrame;
 class ActionsManager;
+class WebsocketThread;
 
 // ----------------------------------------------------------------------------
 // private classes
@@ -156,6 +160,10 @@ public:
 
 	std::string GetPathForSaving(const std::string& filename);
 
+	void InitWebsocketServer();
+	void OpenConnect();
+	void CloseConnect();
+
 	// Tab Mutex and Cond
 	wxMutex& GetTabMutex() { return tab_mutex; }
 	wxCondition& GetTabCond() { return tab_cond; }
@@ -178,6 +186,8 @@ private:
 	
 	DWORD cef_thread_id;
 
+	WebsocketThread* web_sock_thread;
+
     // any class wishing to process wxWidgets events must use this macro
     wxDECLARE_EVENT_TABLE();
 };
@@ -194,6 +204,9 @@ public:
 	void StartPlay();
 	void StopPlay();
 
+	void SetGreenIcon();
+	void SetRedIcon();
+
     // event handlers
     void OnTimer(wxTimerEvent& WXUNUSED(event)) { UpdateClock(); }
     void OnSize(wxSizeEvent& event);
@@ -202,12 +215,14 @@ private:
 	enum
     {
         Field_Text,
-        Field_Bitmap,
+        Field_Bitmap_conn,
+		Field_Bitmap_play,
         Field_Clock,
 		Field_Max
     };
     wxTimer m_timer;
-    wxStaticBitmap *m_statbmp;
+    wxStaticBitmap *m_statbmp_conn;
+	wxStaticBitmap *m_statbmp_play;
 	wxTimeSpan m_seconds;
 
     wxDECLARE_EVENT_TABLE();
@@ -274,12 +289,24 @@ public:
 
 class MouseMoveAction: public Action
 {
+protected:
 	int x, y;
 	WPARAM wp;
 public:
 	MouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong ts): 
 		Action(ts), x(xPos), y(yPos), wp(wp) {}
 	~MouseMoveAction() override {}
+
+	virtual void Execute() override;
+	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
+};
+
+class MouseWheelAction: public MouseMoveAction
+{
+	int delta;
+public:
+	MouseWheelAction(MouseMoveAction& m_a, int delta): MouseMoveAction(m_a), delta(delta) {}
+	~MouseWheelAction() override {}
 
 	virtual void Execute() override;
 	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
@@ -294,6 +321,19 @@ public:
 	TypeAction(WPARAM wp, LPARAM lp, char ch, wxLongLong ts): 
 		Action(ts), wp(wp), lp(lp), ch(ch) {}
 	~TypeAction() override {}
+
+	virtual void Execute() override;
+	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
+};
+
+class ResizeAction: public Action
+{
+	int width;
+	int height;
+public:
+	ResizeAction(int width, int height, wxLongLong ts): 
+		Action(ts), width(width), height(height) {}
+	~ResizeAction() override {}
 
 	virtual void Execute() override;
 	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
@@ -357,17 +397,16 @@ public:
 	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
 };
 
-/*
-class UrlAction: public Action
+
+class StartUrlEvent: public Event
 {
 	wxString url;
 public:
-	UrlAction() {}
-	~UrlAction() override {}
-	virtual void Execute() override;
+	StartUrlEvent(const std::string& url, wxLongLong ts = wxGetLocalTimeMillis()): Event(ts), url(url)  {}
+	~StartUrlEvent() override {}
 	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
 };
-*/
+
 
 class ActionsManager
 {
@@ -398,13 +437,18 @@ public:
 
 	void PushClickAction(int xPos, int yPos, WPARAM wp, wxLongLong ts = wxGetLocalTimeMillis());
 	void PushMouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong ts = wxGetLocalTimeMillis());
-	void PushTypeAction(WPARAM wp, LPARAM lp, char ch = 0, wxLongLong ts = wxGetLocalTimeMillis());	
+	void PushMouseWheelAction(int xPos, int yPos, WPARAM wp, int delta, wxLongLong ts = wxGetLocalTimeMillis());
+	void PushTypeAction(WPARAM wp, LPARAM lp, char ch = 0, wxLongLong ts = wxGetLocalTimeMillis());
+	void PushResizeAction(int width, int height, wxLongLong ts = wxGetLocalTimeMillis());
 	void PushStartUrl();
 	void PushScreenshot(wxLongLong ts, std::string path);
 	void PushResourceEvent(HTTPResourceEvent* resource);
 	void PushContentEvent(ContentEvent* content);
 
 	void BindTreeCtrl(wxTreeCtrl* tr);
+	
+	void SendJson(Action& action);
+	void SendJson(Event& event);
 
 	wxMutex& GetMutex() { return mutex; }
 	wxCondition& GetCondition() { return condition; }
@@ -440,6 +484,15 @@ public:
 
 	void Play();
 
+protected:
+	virtual ExitCode Entry();
+};
+
+class WebsocketThread: public wxThread
+{
+public:
+	WebsocketThread() {}
+	~WebsocketThread() {}
 protected:
 	virtual ExitCode Entry();
 };
