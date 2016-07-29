@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WebEventBrowser", "WebEventBrowser.vcxproj", "{A5F28054-64BF-4B41-95AB-F29C838DD630}"
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "websocket_server", "..\websocket_server\websocket_server.vcxproj", "{31C0C563-6782-4168-876A-3A6DCED6DE29}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,10 +15,6 @@ Global
 		{A5F28054-64BF-4B41-95AB-F29C838DD630}.Debug|Win32.Build.0 = Debug|Win32
 		{A5F28054-64BF-4B41-95AB-F29C838DD630}.Release|Win32.ActiveCfg = Release|Win32
 		{A5F28054-64BF-4B41-95AB-F29C838DD630}.Release|Win32.Build.0 = Release|Win32
-		{31C0C563-6782-4168-876A-3A6DCED6DE29}.Debug|Win32.ActiveCfg = Debug|Win32
-		{31C0C563-6782-4168-876A-3A6DCED6DE29}.Debug|Win32.Build.0 = Debug|Win32
-		{31C0C563-6782-4168-876A-3A6DCED6DE29}.Release|Win32.ActiveCfg = Release|Win32
-		{31C0C563-6782-4168-876A-3A6DCED6DE29}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
