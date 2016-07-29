@@ -1,3 +1,11 @@
 .project
 WebEventBrowser.VC.db
 WebEventBrowser.sdf
+/WebEventBrowser.VC.VC.opendb
+*.obj
+*.exe
+*.pdb
+*.log
+*.ilk
+*.idb
+Debug/WebEventBrowser.tlog
