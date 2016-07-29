@@ -1,0 +1,12 @@
+[submodule "asio"]
+	path = asio
+	url = git@github.com:retest/asio.git
+[submodule "websocketpp"]
+	path = websocketpp
+	url = git@github.com:retest/websocketpp.git
+[submodule "wxwidgets"]
+	path = wxwidgets
+	url = git@github.com:retest/wxwidgets.git
+[submodule "rapidjson"]
+	path = rapidjson
+	url = git@github.com:retest/rapidjson.git
