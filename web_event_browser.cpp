@@ -21,11 +21,10 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
 	EVT_BUTTON(LoadFromFile, MainFrame::OnLoadFromFile)
 	EVT_BUTTON(Play, MainFrame::OnPlay)
 	EVT_KEY_DOWN(MainFrame::OnKeyPress)
-	EVT_THREAD(WorkerAddTab, MainFrame::AddTabWorker)
 	EVT_THREAD(InitHook, MainFrame::InitHooks)
 	EVT_THREAD(WorkerResourceEvent, MainFrame::AddResourceWorker)
 	EVT_THREAD(WorkerContentEvent, MainFrame::AddContentWorker)	
-	EVT_MENU(CloseTab, MainFrame::OnCloseTab)
+	EVT_THREAD(WorkerWebSockCmd, MainFrame::ParseWebSockCmd)
 	EVT_CLOSE(MainFrame::OnClose)
 wxEND_EVENT_TABLE()
 
@@ -53,12 +52,24 @@ void CreateConsole()
 {
 	if (AllocConsole()) 
 	{ 
-		int hCrt = _open_osfhandle((long)GetStdHandle(STD_OUTPUT_HANDLE), 4); 
-		*stdout = *(::_fdopen(hCrt, "w")); 
-		::setvbuf(stdout, NULL, _IONBF, 0); 
-		*stderr = *(::_fdopen(hCrt, "w")); 
+#if 1 /* for Windows 10 and VS 2015*/
+		HANDLE stdHandle;
+		int hConsole;
+		FILE* fp;
+		stdHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+		hConsole = _open_osfhandle((long)stdHandle, _O_TEXT);
+		fp = _fdopen(hConsole, "w");
+
+		freopen_s(&fp, "CONOUT$", "w", stdout);
+#else
+		/* for other OS and VS vers*/
+		int hCrt = _open_osfhandle((long)GetStdHandle(STD_OUTPUT_HANDLE), 4);
+		*stdout = *(::_fdopen(hCrt, "w"));
+		::setvbuf(stdout, NULL, _IONBF, 0);
+		*stderr = *(::_fdopen(hCrt, "w"));
 		::setvbuf(stderr, NULL, _IONBF, 0);
 		std::ios::sync_with_stdio();
+#endif // _WIN32_WINNT_WIN8 
 	}
 }
 
@@ -70,7 +81,7 @@ LRESULT CALLBACK MyMouseHook(int nCode, WPARAM wp, LPARAM lp)
 	{
 		POINT pt = pmh->pt;
 		//wxPoint ScreenPos = wxGetApp().GetMainFrame()->GetScreenPosition();
-		wxPoint ScreenPos = wxGetApp().GetMainFrame()->m_tab1->GetScreenPosition();
+		wxPoint ScreenPos = wxGetApp().GetMainFrame()->m_browser_panel->GetScreenPosition();
 //		std::cout << "nCode = " << nCode << ", wParam = " << wp << " ";
 		
 			
@@ -205,11 +216,19 @@ bool WevebApp::OnInit()
 void WevebApp::OnInitCmdLine(wxCmdLineParser &parser)
 {
 	parser.AddParam(wxEmptyString, wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
+	parser.AddOption("p", "port", wxEmptyString, wxCMD_LINE_VAL_NUMBER);
+	parser.AddLongOption("url", wxEmptyString, wxCMD_LINE_VAL_STRING);
 	parser.Parse();
 }
 
 bool WevebApp::OnCmdLineParsed(wxCmdLineParser &parser) 
 {
+	port = 8000;
+	start_url = wxT("google.com");
+
+	parser.Found(wxT("port"), &port);
+	parser.Found(wxT("url"), &start_url);
+
 	if (parser.GetParamCount() > 0)
 	{
 		loaded_json = parser.GetParam(0);
@@ -244,13 +263,12 @@ bool WevebApp::InitCefLibrary()
 // ----------------------------------------------------------------------------
 // main frame
 // ----------------------------------------------------------------------------
-void AddElements(wxTreeCtrl* m_Tree);
+
 // frame constructor
 MainFrame::MainFrame(const wxString& title)
        : wxFrame(NULL, wxID_ANY, title)
-	    ,m_Tree(NULL) ,m_BookBrowser(NULL), m_tab1(NULL)
-		,hWndBrowser(NULL)
-		,url_ctrl(NULL)
+	    ,m_Tree(NULL) , m_browser_panel(NULL)
+		,hWndBrowser(NULL)		
 		,tab_cond(tab_mutex)
 		,cef_thread_id(0)
 		,web_sock_thread(NULL)
@@ -269,19 +287,20 @@ MainFrame::MainFrame(const wxString& title)
 	fileMenu->Append(Minimal_Quit, "E&xit\tAlt-X", "Quit this program");
 
     // now append the freshly created menu to the menu bar...
+	/*
     wxMenuBar *menuBar = new wxMenuBar();
     menuBar->Append(fileMenu, "&File");
     menuBar->Append(helpMenu, "&Help");
-
+	*/
     // ... and attach this menu bar to the frame
-    SetMenuBar(menuBar);
+    //SetMenuBar(menuBar);
 
     wxStatusBar *statbarNew = new MyStatusBar(this);
     SetStatusBar(statbarNew);
     SetStatusText("Welcome to WebEventBrowser!");
 
 	Maximize();
-
+	
 	wxPanel *m_Panel = new wxPanel(this, wxID_ANY);
 	m_Tree = new wxTreeCtrl(m_Panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTR_DEFAULT_STYLE | wxTR_HIDE_ROOT );
 
@@ -290,62 +309,27 @@ MainFrame::MainFrame(const wxString& title)
 	m_Tree->ExpandAll();
 
 	wxGetApp().GetActionsManager().BindTreeCtrl(m_Tree);
-
-	wxBoxSizer *sizer = new wxBoxSizer(wxHORIZONTAL);	
-	wxBoxSizer *leftsizer = new wxBoxSizer(wxVERTICAL);
-	wxBoxSizer *rightsizer = new wxBoxSizer(wxVERTICAL);
-	wxBoxSizer *btnsizer = new wxBoxSizer(wxVERTICAL);
+	m_Tree->Hide();
 	
-	btnsizer->Add(new wxButton(this, RecordScript, wxT("Record Script"), wxDefaultPosition, wxSize(110, 40)), 0, wxALL, 7);
-	btnsizer->Add(new wxButton(this, SaveToFile, wxT("Save to File"), wxDefaultPosition, wxSize(110, 40)), 0, wxALL, 7);
-	
-	// add spacer
-	btnsizer->Add(10, 11);
+	wxBoxSizer *sizer = new wxBoxSizer(wxHORIZONTAL);
 
-	btnsizer->Add(new wxButton(this, LoadFromFile, wxT("Load from File"), wxDefaultPosition, wxSize(110, 40)), 0, wxALL, 7);
-	btnsizer->Add(new wxButton(this, Play, wxT("Play"), wxDefaultPosition, wxSize(110, 40)), 0, wxALL, 7);
-	
-	leftsizer->Add(m_Panel, 1, wxGROW, 0);
-
-	leftsizer->Add(btnsizer, 0, wxRIGHT | wxLEFT, 15
-		//new wxButton(this, wxID_ANY, wxT("BUTTNO"), wxDefaultPosition, wxSize(110, 40))
-	);
-	
-	sizer->Add(leftsizer, 0, wxGROW, 0);
-	
-	m_BookBrowser = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBK_DEFAULT );
-	m_BookBrowser->Connect(wxID_ANY,  wxEVT_RIGHT_UP ,wxMouseEventHandler(MainFrame::OnRightClick),NULL,this);
-	m_tab1 = new wxPanel(m_BookBrowser);
-
-	m_BookBrowser->SetMinClientSize(wxSize(750,450));	
-
-	m_BookBrowser->AddPage(m_tab1, "tab 1");
-
-	
-	url_ctrl = new wxTextCtrl(this, wxID_ANY, _(""), wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
-	url_ctrl->Bind(wxEVT_TEXT_ENTER, &MainFrame::OnLoadUrl, this);
-
-	rightsizer->Add(url_ctrl, 0, wxGROW, 0);
-	rightsizer->Add(m_BookBrowser, 1, wxGROW, 0);
-	sizer->Add(rightsizer, 1, wxGROW, 0);
-//	sizer->Add(m_BookBrowser, 1, wxGROW, 0);
-
-
-//	SetSizer(sizer);
-//	Layout();
+	m_browser_panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(300, 300));
+	sizer->Add(m_browser_panel, 1, wxGROW, 0);
+	m_browser_panel->SetMinClientSize(wxSize(750, 500));
 
 	SetSizerAndFit(sizer);
 
-	wxGetApp().app->StartBrowserOnTab(m_tab1->GetHandle());
+	wxGetApp().app->StartBrowserOnTab(m_browser_panel->GetHandle(), wxGetApp().GetStartUrl().ToStdString());
 
 	//
 	wxString loaded_json = wxGetApp().GetLoadedJson();
 	if (loaded_json != _(""))
 	{
-		LoadJsonFile(loaded_json);
-		
-		wxCommandEvent ev(wxEVT_BUTTON, Play);
-		AddPendingEvent(ev);		
+		if (LoadJsonFile(loaded_json))
+		{ 
+			wxCommandEvent ev(wxEVT_BUTTON, Play);
+			AddPendingEvent(ev);
+		}	
 	}
 
 	CloseConnect();
@@ -393,10 +377,6 @@ void MainFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
                  "About WebEventBrowser",
                  wxOK | wxICON_INFORMATION,
                  this);
-
-	wxPoint p1 = m_tab1->GetPosition();
-	std::cout << p1.x << " " << p1.y << std::endl;
-
 }
 
 void MainFrame::OnChangePath(wxCommandEvent& event)
@@ -411,14 +391,6 @@ void MainFrame::OnChangePath(wxCommandEvent& event)
 		return;
 	
 	default_path = dialog.GetValue().ToStdString();
-}
-
-void MainFrame::OnCloseTab(wxCommandEvent& WXUNUSED(event))
-{
-	int sel_tab = m_BookBrowser->GetSelection();
-	assert(sel_tab != wxNOT_FOUND);
-	if (m_BookBrowser->GetPageCount() > 1)
-		m_BookBrowser->DeletePage(sel_tab);
 }
 
 void MainFrame::OnRightClick(wxMouseEvent& event)
@@ -437,15 +409,11 @@ void MainFrame::OnSize(wxSizeEvent& event)
 	if (m_Tree)
 		Resize();
 	
-	if (m_BookBrowser != NULL && m_BookBrowser->GetPageCount() > 0)
+	if (m_browser_panel != NULL)
 	{
-		int sel_tab = m_BookBrowser->GetSelection();
-		assert(sel_tab != wxNOT_FOUND);
-
-		wxSize size = m_BookBrowser->GetPage(sel_tab)->GetSize();
-		HWND hwnd = FindWindowEx(m_BookBrowser->GetPage(sel_tab)->GetHWND(), NULL, NULL, NULL);		
-		if (hwnd)
-			BOOL res = ::SetWindowPos(hwnd, 0, 0, 0, size.x, size.y, SWP_NOZORDER);
+		wxSize size = m_browser_panel->GetSize();
+		HWND hwnd = FindWindowEx(m_browser_panel->GetHWND(), NULL, NULL, NULL);
+		BOOL res = ::SetWindowPos(hwnd, 0, 0, 0, size.x, size.y, SWP_NOZORDER);
 	}
 	
 	wxGetApp().GetActionsManager().PushResizeAction(event.GetSize().GetWidth(), event.GetSize().GetHeight());
@@ -473,27 +441,6 @@ void MainFrame::OnClose(wxCloseEvent& event)
 	event.Skip();
 }
 
-void MainFrame::OnLoadUrl(wxCommandEvent& event)
-{	
-	SimpleHandler::GetInstance()->GetBrowserOnTab()->GetMainFrame()->LoadURL(url_ctrl->GetLineText(0).ToStdString());
-}
-
-void MainFrame::AddTabWorker(wxThreadEvent& event)
-{
-	wxMutexLocker lock(GetTabMutex());
-	static int count_tab = 1;
-
-	wxNotebook* m_BookBrowser = wxGetApp().GetMainFrame()->m_BookBrowser;
-	assert(m_BookBrowser != NULL);
-
-	wxString str;
-	str.Printf(_("tab %d"), ++count_tab);
-
-	m_BookBrowser->AddPage(new wxPanel(m_BookBrowser), str, true);
-
-	GetTabCond().Signal();
-}
-
 void MainFrame::AddResourceWorker(wxThreadEvent& event)
 {
 	HTTPResourceEvent* resource = event.GetPayload<HTTPResourceEvent*>();
@@ -505,6 +452,65 @@ void MainFrame::AddContentWorker(wxThreadEvent& event)
 {
 	ContentEvent* content = event.GetPayload<ContentEvent*>();
 	wxGetApp().GetActionsManager().PushContentEvent(content);
+}
+
+void MainFrame::ParseWebSockCmd(wxThreadEvent& event)
+{
+	std::string json_cmd = event.GetPayload<std::string>();
+//	std::cout << json_cmd << std::endl;
+
+	ActionsManager& actions_manager = wxGetApp().GetActionsManager();
+	
+	using namespace rapidjson;
+
+	Document document;
+	document.Parse(json_cmd);
+
+	assert(document.IsObject());
+	assert(document.HasMember("action"));
+	assert(document["action"].IsString());
+
+	std::string action = document["action"].GetString();
+	if (action == "set_path")
+	{
+		default_path = document["dir"].GetString();
+	}
+	else if (action == "record")
+	{
+		std::string state = document["state"].GetString();
+		if (actions_manager.GetState() == ActionsManager::STOP_RECORD && state == "begin")
+		{
+			wxGetApp().GetMainFrame()->SetSize(document["width"].GetInt(), document["height"].GetInt());
+
+			SimpleHandler::GetInstance()->GetBrowserOnTab()->GetMainFrame()->LoadURL(document["url"].GetString());
+
+			actions_manager.SetStartUrl(document["url"].GetString());
+
+			SetStatusText(wxT("Start record events..."));
+
+			actions_manager.StartRecord();
+		}
+		else if (state == "finished")
+		{
+			SetStatusText(wxT(""));
+			actions_manager.StopRecord();
+		}
+	}
+	else if (action == "play")
+	{
+		if (!LoadJsonFile(document["json"].GetString()))
+			return;		
+
+		wxGetApp().GetMainFrame()->SetTitle(_("WebEventBrowser (playing...)"));
+
+		MyStatusBar* status_bar = (MyStatusBar*)GetStatusBar();
+		status_bar->StartPlay();
+
+		ActionsManager& actions_manager = wxGetApp().GetActionsManager();
+
+		ReplayingThread *thread = new ReplayingThread();
+		thread->Run();
+	}
 }
 
 void MainFrame::OnRecordScript(wxCommandEvent& event)
@@ -519,13 +525,12 @@ void MainFrame::OnRecordScript(wxCommandEvent& event)
 		wxTextEntryDialog dialog(wxGetApp().GetMainFrame(),
 								 wxT("Please enter a initial URL\n"),
 								 wxT("Initial URL"),
-								 url_ctrl->GetLineText(0),
+								 wxT("google.com"),
 								 wxOK | wxCANCEL);
 
 		if (dialog.ShowModal() != wxID_OK)
 			return;
-		url_ctrl->SetLabelText(dialog.GetValue().ToStdString());
-		SimpleHandler::GetInstance()->GetBrowserOnTab()->GetMainFrame()->LoadURL(url_ctrl->GetLineText(0).ToStdString());
+		SimpleHandler::GetInstance()->GetBrowserOnTab()->GetMainFrame()->LoadURL(dialog.GetValue().ToStdString());
 
 		actions_manager.SetStartUrl(dialog.GetValue().ToStdString());
 
@@ -540,8 +545,6 @@ void MainFrame::OnRecordScript(wxCommandEvent& event)
 		btn->SetLabelText(wxT("Record Script"));
 		actions_manager.StopRecord();
 	}
-
-	//start timer
 }
 
 void MainFrame::OnSaveToFile(wxCommandEvent& event)
@@ -590,12 +593,12 @@ void MainFrame::OnLoadFromFile(wxCommandEvent& event)
 	LoadJsonFile(openFileDialog.GetPath());
 }
 
-void MainFrame::LoadJsonFile(wxString path)
+bool MainFrame::LoadJsonFile(wxString path)
 {
 	if (wxGetApp().GetActionsManager().GetState() != ActionsManager::STOP_RECORD)
 	{
 		SetStatusText(_("Error: Failed to open, please stop play actions"));
-		return;
+		return false;
 	}
 	
 	// Validation JSON
@@ -606,7 +609,7 @@ void MainFrame::LoadJsonFile(wxString path)
 	if (sd.HasParseError()) 
 	{
 		SetStatusText(_("Error: The schema is not a valid JSON"));
-		return;
+		return false;
 	}
 
 	SchemaDocument schema(sd);
@@ -621,7 +624,7 @@ void MainFrame::LoadJsonFile(wxString path)
 	if (doc.HasParseError())
 	{
 		SetStatusText(_("Error: The input is not a valid JSON"));
-		return;
+		return false;
 	}
 	fclose(fp);
 
@@ -645,7 +648,10 @@ void MainFrame::LoadJsonFile(wxString path)
 	if (!wxGetApp().GetActionsManager().LoadJsonDocument(doc))
 	{
 		SetStatusText(_("Error: The input is not a valid JSON"));
+		return false;
 	}
+
+	return true;
 }
 
 void MainFrame::OnPlay(wxCommandEvent& event)
@@ -659,7 +665,6 @@ void MainFrame::OnPlay(wxCommandEvent& event)
 
 	ReplayingThread *thread = new ReplayingThread();
 	thread->Run();
-
 }
 
 void MainFrame::SetCefThread(DWORD cef_thread)
@@ -795,6 +800,8 @@ wxThread::ExitCode ReplayingThread::Entry()
 	MyStatusBar* status_bar = (MyStatusBar*)wxGetApp().GetMainFrame()->GetStatusBar();
 	status_bar->StopPlay();
 
+	WebSocketSrv::instance().SendDate("{\"callback\": \"play\", \"state\": \"finished\"}");
+
 	return (wxThread::ExitCode)0;     // success
 }
 
@@ -804,8 +811,8 @@ wxThread::ExitCode ReplayingThread::Entry()
 
 wxThread::ExitCode WebsocketThread::Entry()
 {
-	// init websocket server and run it
-	WebSocketSrv::instance().Run();
+	// init websocket server and run it	
+	WebSocketSrv::instance().Run(wxGetApp().GetPort());
 
 	return (wxThread::ExitCode)0;     // success
 }

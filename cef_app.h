@@ -17,7 +17,7 @@ public:
 	// CefBrowserProcessHandler methods:
 	virtual void OnContextInitialized() OVERRIDE;
 
-	void StartBrowserOnTab(HWND hwnd);
+	void StartBrowserOnTab(HWND hwnd, std::string start_url);
 	void StopBrowserOnTab();
 
 private:

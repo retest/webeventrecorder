@@ -117,12 +117,17 @@ public:
 	bool IsHooked() { return is_hooked; }
 	void StartHook() { is_hooked = true; }
 	void StopHook() { is_hooked = false; }
+
+	int GetPort() { return static_cast<int>(port); }
+	wxString GetStartUrl() { return start_url; }
 private:
 	MainFrame* main_frame;	
 	ActionsManager* actions_manager;
 
 	wxString loaded_json;
 	bool is_hooked;
+	long port;
+	wxString start_url;
 };
 
 // Define a new frame type: this is going to be our main frame
@@ -139,16 +144,13 @@ public:
 	void OnSize(wxSizeEvent& event);
 	void OnKeyPress(wxKeyEvent& event);
 	void OnClose(wxCloseEvent& event);
-
-	void OnLoadUrl(wxCommandEvent& event);
 	
-	void AddTabWorker(wxThreadEvent& event);
-	void OnCloseTab(wxCommandEvent& event);
 	void OnRightClick(wxMouseEvent& event);
 	void InitHooks(wxThreadEvent& event);
 
 	void AddResourceWorker(wxThreadEvent& event);
-	void AddContentWorker(wxThreadEvent& event);	
+	void AddContentWorker(wxThreadEvent& event);
+	void ParseWebSockCmd(wxThreadEvent& event);
 
 	// Buttons
 	void OnRecordScript(wxCommandEvent& event);
@@ -168,15 +170,13 @@ public:
 	wxMutex& GetTabMutex() { return tab_mutex; }
 	wxCondition& GetTabCond() { return tab_cond; }
 	
-	wxPanel *m_tab1;
-	wxNotebook* m_BookBrowser;
-	wxTextCtrl* url_ctrl;
+	wxPanel *m_browser_panel;
 private:
 	wxTreeCtrl *m_Tree;	
 	HWND hWndBrowser;
 
 	void PlayEvents();
-	void LoadJsonFile(wxString path);
+	bool LoadJsonFile(wxString path);
 	void Resize();
 
 	wxMutex tab_mutex;
@@ -255,7 +255,8 @@ enum
 	WorkerResourceEvent,
 	WorkerContentEvent,
 	ChangePath,
-	InitHook
+	InitHook,
+	WorkerWebSockCmd
 };
 
 class Action
@@ -481,8 +482,6 @@ class ReplayingThread: public wxThread
 {
 public:
 	ReplayingThread(): wxThread(wxTHREAD_DETACHED) {}
-
-	void Play();
 
 protected:
 	virtual ExitCode Entry();

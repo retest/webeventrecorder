@@ -1,4 +1,3 @@
-
 #include "websock_srv.h"
 
 #include "web_event_browser.h"
@@ -18,7 +17,7 @@ WebSocketSrv::WebSocketSrv()
 		ws_server.init_asio();
 
 		// Register our message handler
-		//echo_server.set_message_handler(bind(&WebSocketSrv::on_message,&echo_server,::_1,::_2));
+		ws_server.set_message_handler(bind(&WebSocketSrv::on_message,&ws_server,::_1,::_2));
 		
 		// Register open/close connection
 		ws_server.set_open_handler(bind(&WebSocketSrv::on_open,&ws_server,::_1));
@@ -37,6 +36,12 @@ WebSocketSrv::WebSocketSrv()
 // Define a callback to handle incoming messages
 void WebSocketSrv::on_message(server* s, websocketpp::connection_hdl hdl, message_ptr msg) 
 {
+	wxThreadEvent evt(wxEVT_THREAD, WorkerWebSockCmd);
+	evt.SetPayload(msg->get_payload());
+	wxQueueEvent(wxGetApp().GetMainFrame(), evt.Clone());	
+	return;
+
+	/*
     std::cout << "on_message called with hdl: " << hdl.lock().get()
               << " and message: " << msg->get_payload()
               << std::endl;
@@ -54,6 +59,7 @@ void WebSocketSrv::on_message(server* s, websocketpp::connection_hdl hdl, messag
         std::cout << "Echo failed because: " << e
                   << "(" << e.message() << ")" << std::endl;
     }
+	*/
 }
 
 void WebSocketSrv::on_open(server* s, websocketpp::connection_hdl hdl)
@@ -84,7 +90,7 @@ void WebSocketSrv::StopServer()
 	ws_server.stop();
 }
 
-void WebSocketSrv::Run()
+void WebSocketSrv::Run(int port)
 {
 	// Listen on port
 	ws_server.listen(port);

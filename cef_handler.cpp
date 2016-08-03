@@ -40,9 +40,9 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser)
 {
 	CEF_REQUIRE_UI_THREAD();
 
-	int sel_tab = wxGetApp().GetMainFrame()->m_BookBrowser->GetSelection();
+	//int sel_tab = wxGetApp().GetMainFrame()->m_BookBrowser->GetSelection();
 	// Add to the map of existing browsers.
-	browser_map_.insert(std::pair<int, CefRefPtr<CefBrowser> > (sel_tab, browser));
+	browser_map_.insert(std::pair<int, CefRefPtr<CefBrowser> > (0, browser));
 	
 	if (!first_init)
 	{
@@ -98,11 +98,13 @@ bool SimpleHandler::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
 								  CefBrowserSettings& settings, bool* no_javascript_access)
 {
 
-	/*
+	/* // TODO: remove in future
 	1) Thread task for new Tab
 	2) Wait
 	3) Get tab pointer 
 	*/
+
+	/*
 	MainFrame* my_frame = wxGetApp().GetMainFrame();
 	assert(my_frame != NULL);
 
@@ -130,9 +132,10 @@ bool SimpleHandler::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
 	
 	windowInfo.SetAsPopup(NULL, "xyrec_cef");
 	windowInfo.SetAsChild(new_tab->GetHandle(), rect);
-	
-//	browser->GetMainFrame()->LoadURL(target_url);
 	return false;
+	*/
+	browser->GetMainFrame()->LoadURL(target_url);
+	return true;	
 }
 
 void SimpleHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode)
@@ -148,16 +151,10 @@ void SimpleHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 	}
 
 	if (frame->IsMain())
-	{
-		wxTextCtrl* url_ctrl = wxGetApp().GetMainFrame()->url_ctrl;
-		if (url_ctrl != NULL)
-		{
-			wxGetApp().GetMainFrame()->url_ctrl->Clear();
-			wxGetApp().GetMainFrame()->url_ctrl->AppendText(frame->GetURL().ToString());
-			
-			if ( wxGetApp().GetActionsManager().GetState() == ActionsManager::START_RECORD)
-				frame->GetSource(new Visitor(browser, frame->GetURL()));			
-		}
+	{				
+		if ( wxGetApp().GetActionsManager().GetState() == ActionsManager::START_RECORD)
+			frame->GetSource(new Visitor(browser, frame->GetURL()));			
+		
 	}
 }
 
@@ -227,10 +224,7 @@ bool SimpleHandler::OnKeyEvent(CefRefPtr<CefBrowser> browser,
 	  // wait first initialize
 	  while (!first_init) {};
 
-	  int sel_tab = wxGetApp().GetMainFrame()->m_BookBrowser->GetSelection();
-	  assert(sel_tab != wxNOT_FOUND);
-	  
-	  auto it = browser_map_.find(sel_tab);
+	  auto it = browser_map_.find(0);
 
 	  assert(it != browser_map_.end());
 	  return it->second;

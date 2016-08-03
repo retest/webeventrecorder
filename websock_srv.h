@@ -31,7 +31,7 @@ typedef server::message_ptr message_ptr;
 
 class WebSocketSrv
 {
-	// siglton
+	// singlton
 	WebSocketSrv();
 	WebSocketSrv(const WebSocketSrv&);
 	WebSocketSrv& operator=(const WebSocketSrv&);
@@ -49,14 +49,13 @@ public:
 	state_t GetState() { return state; }
 	void SendDate(std::string json_date);
 	void StopServer();
-	void Run();
+	void Run(int port);
 
 private:
 	static void on_open(server* s, websocketpp::connection_hdl hdl);
 	static void on_close(server* s, websocketpp::connection_hdl hdl);
 	static void on_message(server* s, websocketpp::connection_hdl hdl, message_ptr msg);
 
-	static const int port = 8000;
 	server ws_server;
 	websocketpp::connection_hdl con_hdl;
 };

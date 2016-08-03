@@ -22,7 +22,7 @@ void MyCefApp::OnContextInitialized() {
   CEF_REQUIRE_UI_THREAD();
 }
 
-void MyCefApp::StartBrowserOnTab(HWND hwnd)
+void MyCefApp::StartBrowserOnTab(HWND hwnd, std::string start_url)
 {
 	DWORD ThreadId = GetCurrentThreadId();
 		// Information used when creating the native window.
@@ -52,7 +52,8 @@ void MyCefApp::StartBrowserOnTab(HWND hwnd)
       CefCommandLine::GetGlobalCommandLine();
   url = command_line->GetSwitchValue("url");
   if (url.empty())
-    url = "http://www.google.com";
+	  url = start_url;
+    //url = "http://www.google.com";
 	//url = "http://www.w3schools.com/tags/tryit.asp?filename=tryhtml_select";
 	//url = "https://www.expedia.com/";
 		
