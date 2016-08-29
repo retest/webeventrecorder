@@ -1,12 +1,18 @@
+#include "websock_srv.h"
 
 #include "cef_app.h"
 
 #include <string>
-
+#include <fstream>
 #include "cef_handler.h"
 #include "include/cef_browser.h"
 #include "include/cef_command_line.h"
 #include "include/wrapper/cef_helpers.h"
+
+#include "web_event_browser.h"
+
+wxDECLARE_APP(WevebApp);
+
 
 MyCefApp::MyCefApp()
 	:h_win(NULL)
@@ -66,4 +72,43 @@ void MyCefApp::StartBrowserOnTab(HWND hwnd, std::string start_url)
 void MyCefApp::StopBrowserOnTab()
 {	
 	SimpleHandler::GetInstance()->CloseAllBrowsers(true);
+}
+
+void MyCefApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context)
+{
+	// Retrieve the context's window object.
+	CefRefPtr<CefV8Value> object = context->GetGlobal();
+
+	CefRefPtr<CefV8Handler> handler = new MyV8Handler();
+	object->SetValue("cef_js_func",
+		CefV8Value::CreateFunction("cef_js_func", handler),
+		V8_PROPERTY_ATTRIBUTE_NONE);
+}
+
+bool MyV8Handler::Execute(const CefString& name, CefRefPtr<CefV8Value> object, const CefV8ValueList& arguments, CefRefPtr<CefV8Value>& retval, CefString& exception)
+{
+	if (name == "cef_js_func")
+	{
+		CefString str;
+		if (arguments.size() > 0)
+		{
+			str = arguments[0]->GetStringValue();
+
+			wxLongLong ts = wxGetLocalTimeMillis();
+			std::string file_name = "js_" + ts.ToString() + ".txt";
+			file_name = wxGetApp().GetMainFrame()->GetPathForSaving(file_name);
+
+			std::ofstream out(file_name);
+			out << str.ToString();			
+
+			wxString fname = file_name;
+			fname.Replace("\\", "\\\\");
+						
+			WebSocketSrv::instance().SendDate("{\"callback\": \"javascript\", \"file\": \"" + fname.ToStdString() + "\"}");
+			return true;
+		}
+	}
+
+	// Function does not exist.
+	return false;
 }

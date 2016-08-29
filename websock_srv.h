@@ -1,16 +1,16 @@
 #pragma once
 
-#define _VARIADIC_MAX 8
+//#define _VARIADIC_MAX 8
 #define _WEBSOCKETPP_CPP11_THREAD_
 #define _WEBSOCKETPP_CPP11_FUNCTIONAL_
-#define _WEBSOCKETPP_CPP11_SYSTEM_ERROR_
+//#define _WEBSOCKETPP_CPP11_SYSTEM_ERROR_
 #define _WEBSOCKETPP_CPP11_RANDOM_DEVICE_
 #define _WEBSOCKETPP_CPP11_MEMORY_
 #define _WEBSOCKETPP_CPP11_TYPE_TRAITS_
 
 #define ASIO_STANDALONE
 
-#include <system_error>
+//#include <system_error>
 
 //#include "asio.hpp"
 

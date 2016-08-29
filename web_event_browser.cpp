@@ -2,6 +2,7 @@
 #include "websock_srv.h"
 #include "web_event_browser.h"
 #include <iostream>
+#include <fstream>
 #include <shlobj.h>
 
 // ----------------------------------------------------------------------------
@@ -246,7 +247,9 @@ int WevebApp::OnExit()
 bool WevebApp::InitCefLibrary()
 {
     CefMainArgs main_args;	
-    int exit_code = CefExecuteProcess(main_args, NULL, NULL);
+	app = new MyCefApp;
+
+    int exit_code = CefExecuteProcess(main_args, app.get(), NULL);
     if (exit_code >= 0) 
     {
         // The sub-process has completed so return here.
@@ -255,7 +258,7 @@ bool WevebApp::InitCefLibrary()
 
     CefSettings settings;
     settings.multi_threaded_message_loop = true;
-    app = new MyCefApp;
+	settings.single_process = true;
 
     return CefInitialize(main_args, settings, app.get(), NULL);
 }
@@ -272,6 +275,7 @@ MainFrame::MainFrame(const wxString& title)
 		,tab_cond(tab_mutex)
 		,cef_thread_id(0)
 		,web_sock_thread(NULL)
+		,save_content(new ContentEvent)
 {
     // set the frame icon
     SetIcon(wxICON(sample));
@@ -451,7 +455,9 @@ void MainFrame::AddResourceWorker(wxThreadEvent& event)
 void MainFrame::AddContentWorker(wxThreadEvent& event)
 {
 	ContentEvent* content = event.GetPayload<ContentEvent*>();
-	wxGetApp().GetActionsManager().PushContentEvent(content);
+	
+	// save content for future using (after json-request)
+	*save_content = *content;
 }
 
 void MainFrame::ParseWebSockCmd(wxThreadEvent& event)
@@ -510,6 +516,45 @@ void MainFrame::ParseWebSockCmd(wxThreadEvent& event)
 
 		ReplayingThread *thread = new ReplayingThread();
 		thread->Run();
+	}
+	else if (action == "pause")
+	{
+		wxGetApp().GetActionsManager().PauseRecord();
+	}
+	else if (action == "resume")
+	{
+		wxGetApp().GetActionsManager().ResumeRecord();
+	}
+	else if (action == "domtree")
+	{		
+		if (document.HasMember("javascript"))
+		{ 
+
+			std::ifstream js_file(document["javascript"].GetString());
+			if (js_file.is_open())
+			{
+				std::stringstream js;
+				js << js_file.rdbuf();
+
+				CefRefPtr<CefFrame> frame = SimpleHandler::GetInstance()->GetBrowserOnTab()->GetMainFrame();
+				frame->ExecuteJavaScript(js.str(), frame->GetURL(), 0);
+			}
+			else
+			{
+				//error
+				wxString str;
+				str.Printf("Cannot open javascript-file: %s", document["javascript"].GetString());
+				GetStatusBar()->SetStatusText(str);
+			}
+		}	
+		else
+		{
+			wxGetApp().GetActionsManager().PushContentEvent(save_content);
+		}
+	}
+	else if (action == "screenshot")
+	{
+		TakeScreenshot();
 	}
 }
 
@@ -828,13 +873,13 @@ void ActionsManager::StartRecord()
 
 	DeleteActions();
 	
-	start_timestamp = wxGetLocalTimeMillis();
+	start_timestamp = prev_action_timestamp = wxGetLocalTimeMillis();
 
 	wxGetApp().GetMainFrame()->SendSizeEvent();
 
 	PushStartUrl();
 
-	TakeScreenshot();
+//	TakeScreenshot();
 
 	wxGetApp().StartHook();
 }
@@ -843,7 +888,20 @@ void ActionsManager::StopRecord()
 {
 	state = STOP_RECORD;
 	wxGetApp().StopHook();
-	TakeScreenshot();
+//	TakeScreenshot();
+}
+
+void ActionsManager::PauseRecord()
+{
+	state = STOP_RECORD;
+	wxGetApp().StopHook();
+}
+
+void ActionsManager::ResumeRecord()
+{
+	state = START_RECORD;
+	prev_action_timestamp = wxGetLocalTimeMillis();
+	wxGetApp().StartHook();
 }
 
 void ActionsManager::BindTreeCtrl(wxTreeCtrl* tr)
@@ -890,18 +948,18 @@ void ActionsManager::SendJson(Event& event)
 	WebSocketSrv::instance().SendDate(buffer.GetString());
 }
 
-void ActionsManager::PushClickAction(int xPos, int yPos, WPARAM wp, wxLongLong ts)
+void ActionsManager::PushClickAction(int xPos, int yPos, WPARAM wp, wxLongLong delay /*= 0*/)
 {
 	if (state != START_RECORD)
 		return;
 
 	if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
 	{
-		ClickAction click_action(xPos, yPos, wp, ts);
+		ClickAction click_action(xPos, yPos, wp, delay);
 		SendJson(click_action);	
 	}
 
-	actions.push_back(new ClickAction(xPos, yPos, wp, ts));
+	actions.push_back(new ClickAction(xPos, yPos, wp, delay));
 
 	// Add in TreeCtrl
 	wxTreeItemId root_id = tree_ctrl->GetRootItem();
@@ -922,18 +980,18 @@ void ActionsManager::PushClickAction(int xPos, int yPos, WPARAM wp, wxLongLong t
 	tree_ctrl->EnsureVisible(click_id);	
 }
 
-void ActionsManager::PushMouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong ts)
+void ActionsManager::PushMouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong delay /*= 0*/)
 {
 	if (state != START_RECORD)
 		return;
 
 	if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
 	{
-		MouseMoveAction move_action(xPos, yPos, wp, ts);
+		MouseMoveAction move_action(xPos, yPos, wp, delay);
 		SendJson(move_action);	
 	}
 
-	actions.push_back(new MouseMoveAction(xPos, yPos, wp, ts));
+	actions.push_back(new MouseMoveAction(xPos, yPos, wp, delay));
 	
 	// Add in TreeCtrl
 	wxTreeItemId root_id = tree_ctrl->GetRootItem();
@@ -974,18 +1032,18 @@ void ActionsManager::PushMouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLo
 	
 }
 
-void ActionsManager::PushMouseWheelAction(int xPos, int yPos, WPARAM wp, int delta, wxLongLong ts)
+void ActionsManager::PushMouseWheelAction(int xPos, int yPos, WPARAM wp, int delta, wxLongLong delay /*= 0*/)
 {
 	if (state != START_RECORD)
 		return;
 
 	if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
 	{
-		MouseWheelAction wheel_action(MouseMoveAction(xPos, yPos, wp, ts), delta);
+		MouseWheelAction wheel_action(MouseMoveAction(xPos, yPos, wp, delay), delta);
 		SendJson(wheel_action);
 	}
 
-	actions.push_back(new MouseWheelAction(MouseMoveAction(xPos, yPos, wp, ts), delta));
+	actions.push_back(new MouseWheelAction(MouseMoveAction(xPos, yPos, wp, delay), delta));
 
 	// Add in TreeCtrl
 	wxTreeItemId root_id = tree_ctrl->GetRootItem();
@@ -1009,18 +1067,18 @@ void ActionsManager::PushMouseWheelAction(int xPos, int yPos, WPARAM wp, int del
 	tree_ctrl->EnsureVisible(wheel_id);
 }
 
-void ActionsManager::PushTypeAction(WPARAM wp, LPARAM lp, char ch, wxLongLong ts)
+void ActionsManager::PushTypeAction(WPARAM wp, LPARAM lp, char ch, wxLongLong delay /*= 0*/)
 {
 	if (state != START_RECORD)
 		return;
 
 	if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
 	{
-		TypeAction type_action(wp, lp, ch, ts);
+		TypeAction type_action(wp, lp, ch, delay);
 		SendJson(type_action);
 	}
 
-	actions.push_back(new TypeAction(wp, lp, ch, ts));
+	actions.push_back(new TypeAction(wp, lp, ch, delay));
 
 	// Add in TreeCtrl
 	wxTreeItemId root_id = tree_ctrl->GetRootItem();
@@ -1045,18 +1103,18 @@ void ActionsManager::PushTypeAction(WPARAM wp, LPARAM lp, char ch, wxLongLong ts
 	tree_ctrl->EnsureVisible(type_id);	
 }
 
-void ActionsManager::PushResizeAction(int width, int height, wxLongLong ts /*= wxGetLocalTimeMillis()*/)
+void ActionsManager::PushResizeAction(int width, int height, wxLongLong delay /*= 0*/)
 {
 	if (state != START_RECORD)
 		return;
 
 	if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
 	{
-		ResizeAction resize_action(width, height, ts);
+		ResizeAction resize_action(width, height, delay);
 		SendJson(resize_action);
 	}
 
-	actions.push_back(new ResizeAction(width, height, ts));
+	actions.push_back(new ResizeAction(width, height, delay));
 
 	// Add in TreeCtrl
 	wxTreeItemId root_id = tree_ctrl->GetRootItem();
@@ -1183,19 +1241,13 @@ void ActionsManager::PushResourceEvent(HTTPResourceEvent* resource)
 
 void ActionsManager::PushContentEvent(ContentEvent* content)
 {
-	if (state != START_RECORD)
-	{
-		delete content;
-		return;
-	}
+	if (content->SaveToFile())
+		events.push_back(content);
 
 	if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
 	{
 		SendJson(*content);
 	}
-
-	if (content->SaveToFile())
-		events.push_back(content);
 
 	content->Release();	
 }
@@ -1215,7 +1267,6 @@ void ActionsManager::Play()
 		return;
 	}
 	*/
-	time_cursor = start_timestamp;
 
 	for(auto action :actions)
 	{
@@ -1224,19 +1275,14 @@ void ActionsManager::Play()
 		DoDelay(action);
 	}
 
-	wxGetApp().GetMainFrame()->SetTitle(_("WebEventBrowser"));
-	wxGetApp().GetMainFrame()->SetStatusText(_(""));
+	wxGetApp().GetMainFrame()->SetTitle(wxT("WebEventBrowser"));
+	wxGetApp().GetMainFrame()->SetStatusText(wxT(""));
 }
 
 void ActionsManager::DoDelay(Action* action)
 {
-	wxLongLong t = action->GetTimestamp();
-	assert(t >= time_cursor);
-	wxLongLong msec = t - time_cursor;
-	std::cout << (unsigned long)msec.ToLong() << std::endl;	
-	wxMilliSleep((unsigned long)msec.ToLong());
-	
-	time_cursor = t;
+	wxLongLong delay = action->GetDelay();
+	wxMilliSleep((unsigned long)delay.ToLong());
 }
 
 void ActionsManager::DeleteActions()
@@ -1342,6 +1388,15 @@ bool ActionsManager::LoadJsonDocument(rapidjson::Document& doc)
 	state = STOP_RECORD;
 
 	return true;
+}
+
+wxLongLong Action::CalculateDelay()
+{
+	wxLongLong current_timestamp = wxGetLocalTimeMillis();	
+	wxLongLong& prev_action_tm = wxGetApp().GetActionsManager().prev_action_timestamp;
+	wxLongLong delay = current_timestamp - prev_action_tm;
+	prev_action_tm = current_timestamp;
+	return delay;
 }
 
 bool isKeyDown(WPARAM wparam) 
@@ -1482,7 +1537,7 @@ void ClickAction::GetJsonObject(rapidjson::Value& item, rapidjson::Document::All
 	item.AddMember("x", x, alloc);
 	item.AddMember("y", y, alloc);
 	item.AddMember("wp", wp, alloc);
-	item.AddMember("time", timestamp.GetValue(), alloc);
+	item.AddMember("time", delay.GetValue(), alloc);
 }
 
 void MouseMoveAction::Execute()
@@ -1507,7 +1562,7 @@ void MouseMoveAction::GetJsonObject(rapidjson::Value& item, rapidjson::Document:
 	item.AddMember("x", x, alloc);
 	item.AddMember("y", y, alloc);
 	item.AddMember("wp", wp, alloc);
-	item.AddMember("time", timestamp.GetValue(), alloc);
+	item.AddMember("time", delay.GetValue(), alloc);
 }
 
 void MouseWheelAction::Execute()
@@ -1533,7 +1588,7 @@ void MouseWheelAction::GetJsonObject(rapidjson::Value& item, rapidjson::Document
 	item.AddMember("y", y, alloc);
 	item.AddMember("wp", wp, alloc);
 	item.AddMember("delta", delta, alloc);
-	item.AddMember("time", timestamp.GetValue(), alloc);
+	item.AddMember("time", delay.GetValue(), alloc);
 }
 
 void TypeAction::Execute()
@@ -1570,7 +1625,7 @@ void TypeAction::GetJsonObject(rapidjson::Value& item, rapidjson::Document::Allo
 	item.AddMember("wp", wp, alloc);
 	item.AddMember("lp", lp, alloc);
 	item.AddMember("ch", ch, alloc);
-	item.AddMember("time", timestamp.GetValue(), alloc);
+	item.AddMember("time", delay.GetValue(), alloc);
 }
 
 void ResizeAction::Execute()
@@ -1587,7 +1642,7 @@ void ResizeAction::GetJsonObject(rapidjson::Value& item, rapidjson::Document::Al
 	item.AddMember("type", type, alloc);
 	item.AddMember("width", width, alloc);
 	item.AddMember("height", height, alloc);
-	item.AddMember("time", timestamp.GetValue(), alloc);
+	item.AddMember("time", delay.GetValue(), alloc);
 }
 
 void ScreenshotEvent::GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc)

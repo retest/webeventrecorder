@@ -130,6 +130,8 @@ private:
 	wxString start_url;
 };
 
+class ContentEvent;
+
 // Define a new frame type: this is going to be our main frame
 class MainFrame : public wxFrame
 {
@@ -187,6 +189,8 @@ private:
 	DWORD cef_thread_id;
 
 	WebsocketThread* web_sock_thread;
+
+	ContentEvent* save_content;
 
     // any class wishing to process wxWidgets events must use this macro
     wxDECLARE_EVENT_TABLE();
@@ -260,17 +264,23 @@ enum
 };
 
 class Action
-{
+{	
 protected:
-	wxLongLong timestamp;
-		
+	wxLongLong delay;
+	wxLongLong CalculateDelay();
 public:
-	Action(wxLongLong ts): timestamp(ts) {}
+	Action(wxLongLong delay) {
+		if (delay == 0)
+			this->delay = CalculateDelay();
+		else
+			this->delay = delay;
+	}
+
 	virtual ~Action() {}
 	virtual void Execute() = 0;
 	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) = 0;
 
-	wxLongLong GetTimestamp() { return timestamp;} 
+	wxLongLong GetDelay() { return delay;}
 };
 
 class ClickAction: public Action
@@ -280,8 +290,8 @@ class ClickAction: public Action
 
 	bool EventToPopup();
 public:
-	ClickAction(int xPos, int yPos, WPARAM wp, wxLongLong ts): 
-		Action(ts), x(xPos), y(yPos), wp(wp) {}
+	ClickAction(int xPos, int yPos, WPARAM wp, wxLongLong delay): 
+		Action(delay), x(xPos), y(yPos), wp(wp) {}
 	~ClickAction() {}
 
 	virtual void Execute() override;
@@ -294,8 +304,8 @@ protected:
 	int x, y;
 	WPARAM wp;
 public:
-	MouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong ts): 
-		Action(ts), x(xPos), y(yPos), wp(wp) {}
+	MouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong delay): 
+		Action(delay), x(xPos), y(yPos), wp(wp) {}
 	~MouseMoveAction() override {}
 
 	virtual void Execute() override;
@@ -319,8 +329,8 @@ class TypeAction: public Action
 	LPARAM lp;
 	char ch;
 public:
-	TypeAction(WPARAM wp, LPARAM lp, char ch, wxLongLong ts): 
-		Action(ts), wp(wp), lp(lp), ch(ch) {}
+	TypeAction(WPARAM wp, LPARAM lp, char ch, wxLongLong delay): 
+		Action(delay), wp(wp), lp(lp), ch(ch) {}
 	~TypeAction() override {}
 
 	virtual void Execute() override;
@@ -332,8 +342,8 @@ class ResizeAction: public Action
 	int width;
 	int height;
 public:
-	ResizeAction(int width, int height, wxLongLong ts): 
-		Action(ts), width(width), height(height) {}
+	ResizeAction(int width, int height, wxLongLong delay): 
+		Action(delay), width(width), height(height) {}
 	~ResizeAction() override {}
 
 	virtual void Execute() override;
@@ -391,8 +401,18 @@ class ContentEvent: public Event
 	std::string url;
 	std::string saved_filename;
 public:
-	ContentEvent(const std::string &content, const std::string& url, wxLongLong ts = wxGetLocalTimeMillis())
+	ContentEvent(const std::string &content = "", const std::string& url = "", wxLongLong ts = wxGetLocalTimeMillis())
 		: Event(ts), content(content), url(url) {}
+
+	ContentEvent& operator=(ContentEvent& r)
+	{
+		this->content = r.content;
+		this->url = r.url;
+		this->saved_filename = r.saved_filename;
+		this->timestamp = r.timestamp;		
+		return *this;
+	}
+
 	bool SaveToFile();
 	void Release() { content.clear(); url.clear(); } 
 	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
@@ -418,7 +438,7 @@ public:
 		STOP_RECORD
 	};
 
-	ActionsManager(): tree_ctrl(NULL), state(STOP_RECORD), condition(mutex)  {}
+	ActionsManager(): tree_ctrl(NULL), state(STOP_RECORD), condition(mutex) {}
 
 	state_t GetState() const { return state; }
 	wxLongLong GetStartTime() const { return start_timestamp; }
@@ -432,15 +452,17 @@ public:
 	void StartRecord();
 	void StopRecord();
 
+	void PauseRecord();
+	void ResumeRecord();
+
 	void Play();
 
-	//void PushAction(Action* action);
-
-	void PushClickAction(int xPos, int yPos, WPARAM wp, wxLongLong ts = wxGetLocalTimeMillis());
-	void PushMouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong ts = wxGetLocalTimeMillis());
-	void PushMouseWheelAction(int xPos, int yPos, WPARAM wp, int delta, wxLongLong ts = wxGetLocalTimeMillis());
-	void PushTypeAction(WPARAM wp, LPARAM lp, char ch = 0, wxLongLong ts = wxGetLocalTimeMillis());
-	void PushResizeAction(int width, int height, wxLongLong ts = wxGetLocalTimeMillis());
+	// Action pushers
+	void PushClickAction(int xPos, int yPos, WPARAM wp, wxLongLong delay = 0);
+	void PushMouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong delay = 0);
+	void PushMouseWheelAction(int xPos, int yPos, WPARAM wp, int delta, wxLongLong delay = 0);
+	void PushTypeAction(WPARAM wp, LPARAM lp, char ch = 0, wxLongLong delay = 0);
+	void PushResizeAction(int width, int height, wxLongLong delay = 0);
 	void PushStartUrl();
 	void PushScreenshot(wxLongLong ts, std::string path);
 	void PushResourceEvent(HTTPResourceEvent* resource);
@@ -456,8 +478,10 @@ public:
 
 	void SetStartUrl(const std::string& url) { start_url = url; }
 private:
+	friend Action;
+
 	void DoDelay(Action* action);
-	void DeleteActions();
+	void DeleteActions();	
 
 	// current list recorded actions
 	std::list<Action*> actions;
@@ -468,7 +492,7 @@ private:
 	state_t state;
 
 	wxLongLong start_timestamp;
-	wxLongLong time_cursor;	// for delay between actions
+	wxLongLong prev_action_timestamp;
 
 	std::string start_url;
 
