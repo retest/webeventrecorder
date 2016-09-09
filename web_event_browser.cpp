@@ -155,10 +155,10 @@ LRESULT CALLBACK MyKeyboardHook(int nCode, WPARAM wp, LPARAM lp)
 			GetKeyboardState(lpKeyState);
 
 			UINT uScanCode = (lp >> 16 ) & 0xFF;
-	//		wchar_t Char[256];
-			WORD Char;
-			int res = ToAscii(wp, uScanCode, lpKeyState, &Char, 0);
-			//int res = ToUnicode(wp, uScanCode, lpKeyState, Char, 256, 0);
+			wchar_t Char[256];
+//			WORD Char;
+//			int res = ToAscii(wp, uScanCode, lpKeyState, &Char, 0);
+			int res = ToUnicode(wp, uScanCode, lpKeyState, Char, 256, 0);
 			if (res < 0)
 				std::cout << "is Dead key\n";
 			else
@@ -167,8 +167,8 @@ LRESULT CALLBACK MyKeyboardHook(int nCode, WPARAM wp, LPARAM lp)
 					std::cout << "no translated\n";
 				else if (res == 1)
 				{
-					std::cout << "One character was copied to the buffer: "  << char(Char) << std::endl;
-					wxGetApp().GetActionsManager().PushTypeAction(wp, lp, char(Char));
+					std::cout << "One character was copied to the buffer: "  << Char[0] << std::endl;
+					wxGetApp().GetActionsManager().PushTypeAction(wp, lp, (int)Char[0]);
 				}
 				else
 					std::cout << "Two characters were copied to the buffer: " << std::endl;
@@ -473,6 +473,13 @@ void MainFrame::ParseWebSockCmd(wxThreadEvent& event)
 	document.Parse(json_cmd);
 
 	assert(document.IsObject());
+
+	if (document.HasMember("user-agent"))
+	{		
+		user_agent = document["user-agent"].GetString();
+		return;
+	}
+
 	assert(document.HasMember("action"));
 	assert(document["action"].IsString());
 
@@ -1067,7 +1074,7 @@ void ActionsManager::PushMouseWheelAction(int xPos, int yPos, WPARAM wp, int del
 	tree_ctrl->EnsureVisible(wheel_id);
 }
 
-void ActionsManager::PushTypeAction(WPARAM wp, LPARAM lp, char ch, wxLongLong delay /*= 0*/)
+void ActionsManager::PushTypeAction(WPARAM wp, LPARAM lp, int ch, wxLongLong delay /*= 0*/)
 {
 	if (state != START_RECORD)
 		return;

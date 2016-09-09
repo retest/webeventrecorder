@@ -173,6 +173,8 @@ public:
 	wxCondition& GetTabCond() { return tab_cond; }
 	
 	wxPanel *m_browser_panel;
+	
+	std::string user_agent;
 private:
 	wxTreeCtrl *m_Tree;	
 	HWND hWndBrowser;
@@ -327,9 +329,9 @@ class TypeAction: public Action
 {
 	WPARAM wp;
 	LPARAM lp;
-	char ch;
+	int ch;
 public:
-	TypeAction(WPARAM wp, LPARAM lp, char ch, wxLongLong delay): 
+	TypeAction(WPARAM wp, LPARAM lp, int ch, wxLongLong delay): 
 		Action(delay), wp(wp), lp(lp), ch(ch) {}
 	~TypeAction() override {}
 
@@ -461,7 +463,7 @@ public:
 	void PushClickAction(int xPos, int yPos, WPARAM wp, wxLongLong delay = 0);
 	void PushMouseMoveAction(int xPos, int yPos, WPARAM wp, wxLongLong delay = 0);
 	void PushMouseWheelAction(int xPos, int yPos, WPARAM wp, int delta, wxLongLong delay = 0);
-	void PushTypeAction(WPARAM wp, LPARAM lp, char ch = 0, wxLongLong delay = 0);
+	void PushTypeAction(WPARAM wp, LPARAM lp, int ch = 0, wxLongLong delay = 0);
 	void PushResizeAction(int width, int height, wxLongLong delay = 0);
 	void PushStartUrl();
 	void PushScreenshot(wxLongLong ts, std::string path);

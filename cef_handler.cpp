@@ -272,6 +272,20 @@ void SimpleHandler::OnDownloadUpdated(CefRefPtr<CefBrowser> browser, CefRefPtr<C
 CefRequestHandler::ReturnValue SimpleHandler::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, 
 																   CefRefPtr<CefRequest> request, CefRefPtr<CefRequestCallback> callback)
 {
+	CefRequest::HeaderMap headerMap;
+	request->GetHeaderMap(headerMap);
+
+	auto it = headerMap.find("User-Agent");
+	if (it != headerMap.end())
+	{
+		std::string& user_agent = wxGetApp().GetMainFrame()->user_agent;
+
+		if (user_agent != "")
+			it->second = user_agent;
+	}
+
+	request->SetHeaderMap(headerMap);
+
 	return RV_CONTINUE;
 }
 
