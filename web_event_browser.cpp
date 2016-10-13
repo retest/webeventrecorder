@@ -493,7 +493,10 @@ void MainFrame::ParseWebSockCmd(wxThreadEvent& event)
 		std::string state = document["state"].GetString();
 		if (actions_manager.GetState() == ActionsManager::STOP_RECORD && state == "begin")
 		{
-			wxGetApp().GetMainFrame()->SetSize(document["width"].GetInt(), document["height"].GetInt());
+			wxGetApp().GetMainFrame()->Maximize(false);
+			wxGetApp().GetMainFrame()->Move(0, 0);
+			wxGetApp().GetMainFrame()->m_browser_panel->SetInitialSize(wxSize(document["width"].GetInt(), document["height"].GetInt()));
+			wxGetApp().GetMainFrame()->Fit();
 
 			SimpleHandler::GetInstance()->GetBrowserOnTab()->GetMainFrame()->LoadURL(document["url"].GetString());
 
@@ -1618,6 +1621,9 @@ void TypeAction::Execute()
 	{		
 		key_event.type = KEYEVENT_CHAR;
 		key_event.windows_key_code = ch;
+		if (key_event.windows_key_code == '\t')
+			key_event.windows_key_code = '\0';
+
 	}
 
 	current_browser->GetHost()->SendKeyEvent(key_event);
@@ -1637,7 +1643,9 @@ void TypeAction::GetJsonObject(rapidjson::Value& item, rapidjson::Document::Allo
 
 void ResizeAction::Execute()
 {
-	wxGetApp().GetMainFrame()->SetSize(width, height);
+	wxGetApp().GetMainFrame()->m_browser_panel->SetInitialSize(wxSize(width, height));
+	wxGetApp().GetMainFrame()->Fit();
+//	wxGetApp().GetMainFrame()->SetSize(width, height);
 	wxGetApp().GetMainFrame()->SendSizeEvent();
 }
 
