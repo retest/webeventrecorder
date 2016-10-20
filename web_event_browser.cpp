@@ -94,6 +94,8 @@ LRESULT CALLBACK MyMouseHook(int nCode, WPARAM wp, LPARAM lp)
 		//if (wp != WM_MOUSEMOVE && nCode == 3)
 		if ((wp == WM_LBUTTONDOWN || wp == WM_LBUTTONUP) && nCode == 0)
 		{
+			//
+			wxGetApp().GetMainFrame()->TrackingJSMouse(xPos, yPos);
 			wxGetApp().GetActionsManager().PushClickAction(xPos, yPos, wp);
 		}
 		else if (wp == WM_MOUSEMOVE && nCode == 0)
@@ -539,7 +541,6 @@ void MainFrame::ParseWebSockCmd(wxThreadEvent& event)
 	{		
 		if (document.HasMember("javascript"))
 		{ 
-
 			std::ifstream js_file(document["javascript"].GetString());
 			if (js_file.is_open())
 			{
@@ -565,6 +566,10 @@ void MainFrame::ParseWebSockCmd(wxThreadEvent& event)
 	else if (action == "screenshot")
 	{
 		TakeScreenshot();
+	}
+	else if (action == "guipath")
+	{
+		gui_path = document["dir"].GetString();
 	}
 }
 
@@ -744,6 +749,41 @@ std::string MainFrame::GetPathForSaving(const std::string& filename)
 	}
 
 	return path;
+}
+
+void MainFrame::TrackingJSMouse(int xPos, int yPos)
+{
+	if (wxGetApp().GetActionsManager().GetState() != ActionsManager::START_RECORD)
+		return;
+
+	if (WebSocketSrv::instance().GetState() != WebSocketSrv::WSOCK_OPEN)
+		return;
+
+	static std::string script_tracking_mouse;
+
+	// execute injected js-code (tracking js click)
+	if (script_tracking_mouse.length() == 0)
+	{
+		std::string js_path = wxGetApp().GetMainFrame()->GetGuiPath();
+		js_path += "//js//css-selector-generator-param.js";
+
+		std::ifstream js_file(js_path);
+		if (js_file.is_open())
+		{
+			std::stringstream js;
+			js << js_file.rdbuf();
+			script_tracking_mouse = js.str();
+		}
+	}
+
+	if (script_tracking_mouse.length() != 0)
+	{
+		wxString script_params;
+		script_params.Printf(script_tracking_mouse.c_str(), xPos, yPos);
+
+		CefRefPtr<CefFrame> frame = SimpleHandler::GetInstance()->GetBrowserOnTab()->GetMainFrame();
+		frame->ExecuteJavaScript(script_params.ToStdString(), frame->GetURL(), 0);
+	}		
 }
 
 void MainFrame::InitWebsocketServer()
@@ -1770,6 +1810,17 @@ void StartUrlEvent::GetJsonObject(rapidjson::Value& item, rapidjson::Document::A
 	item.AddMember("start_time", GetTimestamp().GetValue(), alloc);
 }
 
+void JSClickEvent::GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc)
+{
+	rapidjson::Value type(rapidjson::kStringType);
+	type.SetString("js_click", alloc);
+
+	item.AddMember("type", type, alloc);
+	item.AddMember("client_x", client_x, alloc);
+	item.AddMember("client_y", client_y, alloc);
+	item.AddMember("time", timestamp.GetValue(), alloc);
+	item.AddMember("result_id", result_id, alloc);
+}
 
 void TakeScreenshot()
 {

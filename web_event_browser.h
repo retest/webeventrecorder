@@ -163,6 +163,8 @@ public:
 	void SetCefThread(DWORD cef_thread);
 
 	std::string GetPathForSaving(const std::string& filename);
+	const std::string& GetGuiPath() { return gui_path; }
+	void TrackingJSMouse(int xPos, int yPos);
 
 	void InitWebsocketServer();
 	void OpenConnect();
@@ -187,6 +189,7 @@ private:
 	wxCondition tab_cond;
 
 	std::string default_path;	// for saving screenshots/contents
+	std::string gui_path;		// path to GUI
 	
 	DWORD cef_thread_id;
 
@@ -430,6 +433,17 @@ public:
 	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
 };
 
+class JSClickEvent : public Event
+{
+	int client_x;
+	int client_y;
+	std::string result_id;
+public:
+	JSClickEvent(int client_x, int client_y, const std::string& result_id, wxLongLong ts = wxGetLocalTimeMillis()): 
+		Event(ts), client_x(client_x), client_y(client_y), result_id(result_id) {};
+	~JSClickEvent() override {}
+	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
+};
 
 class ActionsManager
 {

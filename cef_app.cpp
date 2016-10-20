@@ -78,11 +78,34 @@ void MyCefApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 {
 	// Retrieve the context's window object.
 	CefRefPtr<CefV8Value> object = context->GetGlobal();
-
+	
 	CefRefPtr<CefV8Handler> handler = new MyV8Handler();
 	object->SetValue("cef_js_func",
 		CefV8Value::CreateFunction("cef_js_func", handler),
 		V8_PROPERTY_ATTRIBUTE_NONE);
+
+	object->SetValue("cef_js_track_mouse",
+		CefV8Value::CreateFunction("cef_js_track_mouse", handler),
+		V8_PROPERTY_ATTRIBUTE_NONE);
+
+	// init tracking js mouse script
+	static std::string js_init_tracking_mouse_code;
+	if (js_init_tracking_mouse_code.length() == 0)
+	{
+		std::string js_path = wxGetApp().GetMainFrame()->GetGuiPath();
+		js_path += "//js//css-selector-generator.min.js";
+
+		std::ifstream js_file(js_path);
+		if (js_file.is_open())
+		{
+			std::stringstream js;
+			js << js_file.rdbuf();
+			js_init_tracking_mouse_code = js.str();
+		}
+	}
+
+	if (js_init_tracking_mouse_code.length() != 0)
+		frame->ExecuteJavaScript(js_init_tracking_mouse_code, frame->GetURL(), 0);
 }
 
 bool MyV8Handler::Execute(const CefString& name, CefRefPtr<CefV8Value> object, const CefV8ValueList& arguments, CefRefPtr<CefV8Value>& retval, CefString& exception)
@@ -107,6 +130,19 @@ bool MyV8Handler::Execute(const CefString& name, CefRefPtr<CefV8Value> object, c
 			WebSocketSrv::instance().SendDate("{\"callback\": \"javascript\", \"file\": \"" + fname.ToStdString() + "\"}");
 			return true;
 		}
+	}
+	else if (name == "cef_js_track_mouse")
+	{
+		int client_x = arguments[0]->GetIntValue();
+		int client_y = arguments[1]->GetIntValue();
+
+		std::string result_id = arguments[2]->GetStringValue();
+
+		JSClickEvent js_click_event(client_x, client_y, result_id);
+
+		if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
+			wxGetApp().GetActionsManager().SendJson(js_click_event);
+		return true;
 	}
 
 	// Function does not exist.

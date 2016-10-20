@@ -28,7 +28,6 @@ public:
 
 private:
 	HWND h_win;
-
 	// Include the default reference counting implementation.
 	IMPLEMENT_REFCOUNTING(MyCefApp);
 };
