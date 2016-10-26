@@ -437,12 +437,21 @@ class JSClickEvent : public Event
 {
 	int client_x;
 	int client_y;
-	std::string result_id;
+	std::string result;
 public:
-	JSClickEvent(int client_x, int client_y, const std::string& result_id, wxLongLong ts = wxGetLocalTimeMillis()): 
-		Event(ts), client_x(client_x), client_y(client_y), result_id(result_id) {};
+	JSClickEvent(int client_x, int client_y, const std::string& result, wxLongLong ts = wxGetLocalTimeMillis()):
+		Event(ts), client_x(client_x), client_y(client_y), result(result) {};
 	~JSClickEvent() override {}
 	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;
+};
+
+class JSFocusEvent : public Event
+{
+	std::string result;
+public:
+	JSFocusEvent(const std::string& result, wxLongLong ts = wxGetLocalTimeMillis()) : Event(ts), result(result) { }
+	~JSFocusEvent() override {}
+	virtual void GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc) override;	
 };
 
 class ActionsManager

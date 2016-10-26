@@ -88,9 +88,13 @@ void MyCefApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 		CefV8Value::CreateFunction("cef_js_track_mouse", handler),
 		V8_PROPERTY_ATTRIBUTE_NONE);
 
+	object->SetValue("cef_js_track_focus",
+		CefV8Value::CreateFunction("cef_js_track_focus", handler),
+		V8_PROPERTY_ATTRIBUTE_NONE);
+
 	// init tracking js mouse script
-	static std::string js_init_tracking_mouse_code;
-	if (js_init_tracking_mouse_code.length() == 0)
+	static std::string js_init_tracking_code;
+	if (js_init_tracking_code.length() == 0)
 	{
 		std::string js_path = wxGetApp().GetMainFrame()->GetGuiPath();
 		js_path += "//js//css-selector-generator.min.js";
@@ -100,12 +104,31 @@ void MyCefApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 		{
 			std::stringstream js;
 			js << js_file.rdbuf();
-			js_init_tracking_mouse_code = js.str();
+			js_init_tracking_code = js.str();
 		}
 	}
 
-	if (js_init_tracking_mouse_code.length() != 0)
-		frame->ExecuteJavaScript(js_init_tracking_mouse_code, frame->GetURL(), 0);
+	if (js_init_tracking_code.length() != 0)
+		frame->ExecuteJavaScript(js_init_tracking_code, frame->GetURL(), 0);
+
+	// init focus tracking script
+	static std::string js_init_tracking_focus;
+	if (js_init_tracking_focus.length() == 0)
+	{
+		std::string js_path = wxGetApp().GetMainFrame()->GetGuiPath();
+		js_path += "//js//focushandler.js";
+
+		std::ifstream js_file(js_path);
+		if (js_file.is_open())
+		{
+			std::stringstream js;
+			js << js_file.rdbuf();
+			js_init_tracking_focus = js.str();
+		}
+	}
+
+	if (js_init_tracking_focus.length() != 0)
+		frame->ExecuteJavaScript(js_init_tracking_focus, frame->GetURL(), 0);
 }
 
 bool MyV8Handler::Execute(const CefString& name, CefRefPtr<CefV8Value> object, const CefV8ValueList& arguments, CefRefPtr<CefV8Value>& retval, CefString& exception)
@@ -136,12 +159,22 @@ bool MyV8Handler::Execute(const CefString& name, CefRefPtr<CefV8Value> object, c
 		int client_x = arguments[0]->GetIntValue();
 		int client_y = arguments[1]->GetIntValue();
 
-		std::string result_id = arguments[2]->GetStringValue();
+		std::string result = arguments[2]->GetStringValue();
 
-		JSClickEvent js_click_event(client_x, client_y, result_id);
+		JSClickEvent js_click_event(client_x, client_y, result);
 
 		if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
 			wxGetApp().GetActionsManager().SendJson(js_click_event);
+		return true;
+	}
+	else if (name == "cef_js_track_focus")
+	{
+		std::string result = arguments[0]->GetStringValue();
+
+		JSFocusEvent js_focus_event(result);
+
+		if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
+			wxGetApp().GetActionsManager().SendJson(js_focus_event);
 		return true;
 	}
 

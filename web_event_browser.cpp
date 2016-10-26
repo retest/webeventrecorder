@@ -1819,7 +1819,16 @@ void JSClickEvent::GetJsonObject(rapidjson::Value& item, rapidjson::Document::Al
 	item.AddMember("client_x", client_x, alloc);
 	item.AddMember("client_y", client_y, alloc);
 	item.AddMember("time", timestamp.GetValue(), alloc);
-	item.AddMember("result_id", result_id, alloc);
+	item.AddMember("result", result, alloc);
+}
+
+void JSFocusEvent::GetJsonObject(rapidjson::Value& item, rapidjson::Document::AllocatorType& alloc)
+{
+	rapidjson::Value type(rapidjson::kStringType);
+	type.SetString("js_focus", alloc);
+
+	item.AddMember("type", type, alloc);
+	item.AddMember("result", result, alloc);
 }
 
 void TakeScreenshot()
