@@ -1,3 +1,5 @@
+#include "websock_srv.h"
+
 #include "cef_handler.h"
 #include <iostream>
 //#include <sstream>
@@ -78,11 +80,13 @@ void SimpleHandler::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 	BrowserMap::iterator bit = browser_map_.begin();
 	for (; bit != browser_map_.end(); ++bit)
 	{
-		if ((bit->second)->IsSame(browser)) 
+		if ((bit->second)->IsSame(browser))
 		{
-			browser_map_.erase(bit);
+			bit = browser_map_.erase(bit);
 			break;
 		}
+		else
+			++bit;
 	}
 
 	if (browser_map_.empty()) 
@@ -339,6 +343,43 @@ bool SimpleHandler::OnResourceResponse(CefRefPtr<CefBrowser> browser, CefRefPtr<
 
 	wxQueueEvent(wxGetApp().GetMainFrame(), evt.Clone());
 
+	return false;
+}
+
+bool SimpleHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefProcessId source_process, CefRefPtr<CefProcessMessage> message)
+{
+	CefRefPtr<CefListValue> args = message->GetArgumentList();
+	// Check the message name.
+	const std::string& message_name = message->GetName();
+
+	if (message_name == "cef_js_func") 
+	{		
+		WebSocketSrv::instance().SendDate(args->GetString(0));
+		return true;
+	}
+	else if (message_name == "cef_js_track_mouse")
+	{
+		int client_x = args->GetInt(0);
+		int client_y = args->GetInt(1);
+
+		std::string result = args->GetString(2);
+
+		JSClickEvent js_click_event(client_x, client_y, result);
+
+		if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
+			wxGetApp().GetActionsManager().SendJson(js_click_event);
+		return true;
+	}
+	else if (message_name == "cef_js_track_focus")
+	{
+		std::string result = args->GetString(0);
+
+		JSFocusEvent js_focus_event(result);
+
+		if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
+			wxGetApp().GetActionsManager().SendJson(js_focus_event);		
+		return true;
+	}
 	return false;
 }
 

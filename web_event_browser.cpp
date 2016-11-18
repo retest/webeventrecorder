@@ -190,17 +190,17 @@ LRESULT CALLBACK MyKeyboardHook(int nCode, WPARAM wp, LPARAM lp)
 bool WevebApp::OnInit()
 {
 	if (!InitCefLibrary())
+		return false;	// return by render process
+
+	// call the base class initialization method, currently it only parses a
+	// few common command-line options but it could be do more in the future
+	if (!wxApp::OnInit())
 		return false;
 
+	InitWebsocketServer();
 	is_hooked = false;
-
 	actions_manager = new ActionsManager;
 
-    // call the base class initialization method, currently it only parses a
-    // few common command-line options but it could be do more in the future
-    if ( !wxApp::OnInit() )
-        return false;
-		
 //	CreateConsole();
 
     // create the main application window
@@ -241,8 +241,8 @@ bool WevebApp::OnCmdLineParsed(wxCmdLineParser &parser)
 
 int WevebApp::OnExit()
 {	
-	CefShutdown();
 //	CefQuitMessageLoop();
+	CefShutdown();
 	return 0;
 }
 
@@ -260,10 +260,18 @@ bool WevebApp::InitCefLibrary()
 
     CefSettings settings;
     settings.multi_threaded_message_loop = true;
-	settings.single_process = true;
+	settings.no_sandbox = true;
 
     return CefInitialize(main_args, settings, app.get(), NULL);
 }
+
+void WevebApp::InitWebsocketServer()
+{
+	assert(port != 0);
+	web_sock_thread = new WebsocketThread(port);
+	web_sock_thread->Run();
+}
+
 
 // ----------------------------------------------------------------------------
 // main frame
@@ -276,7 +284,6 @@ MainFrame::MainFrame(const wxString& title)
 		,hWndBrowser(NULL)		
 		,tab_cond(tab_mutex)
 		,cef_thread_id(0)
-		,web_sock_thread(NULL)
 		,save_content(new ContentEvent)
 {
     // set the frame icon
@@ -325,7 +332,7 @@ MainFrame::MainFrame(const wxString& title)
 
 	SetSizerAndFit(sizer);
 
-	wxGetApp().app->StartBrowserOnTab(m_browser_panel->GetHandle(), wxGetApp().GetStartUrl().ToStdString());
+//	wxGetApp().app->StartBrowserOnTab(m_browser_panel->GetHandle(), wxGetApp().GetStartUrl().ToStdString());
 
 	//
 	wxString loaded_json = wxGetApp().GetLoadedJson();
@@ -338,8 +345,8 @@ MainFrame::MainFrame(const wxString& title)
 		}	
 	}
 
-	CloseConnect();
-	InitWebsocketServer();
+//	CloseConnect();
+	((MyStatusBar*)GetStatusBar())->SetRedIcon();
 }
 
 void MainFrame::InitHooks(wxThreadEvent& event)
@@ -442,7 +449,8 @@ void MainFrame::OnClose(wxCloseEvent& event)
 {
 	WebSocketSrv::instance().StopServer();
 
-	SimpleHandler::GetInstance()->CloseAllBrowsers(true);
+	if (SimpleHandler::GetInstance())
+		SimpleHandler::GetInstance()->CloseAllBrowsers(true);
 		
 	event.Skip();
 }
@@ -570,6 +578,11 @@ void MainFrame::ParseWebSockCmd(wxThreadEvent& event)
 	else if (action == "guipath")
 	{
 		gui_path = document["dir"].GetString();
+
+		// after set gui_path we are starting....
+		wxGetApp().app->StartBrowserOnTab(m_browser_panel->GetHandle(), wxGetApp().GetStartUrl().ToStdString());
+
+		Update();
 	}
 }
 
@@ -786,12 +799,6 @@ void MainFrame::TrackingJSMouse(int xPos, int yPos)
 	}		
 }
 
-void MainFrame::InitWebsocketServer()
-{
-	web_sock_thread = new WebsocketThread;
-	web_sock_thread->Run();
-}
-
 void MainFrame::OpenConnect()
 {
 	((MyStatusBar*)GetStatusBar())->SetGreenIcon();
@@ -907,7 +914,7 @@ wxThread::ExitCode ReplayingThread::Entry()
 wxThread::ExitCode WebsocketThread::Entry()
 {
 	// init websocket server and run it	
-	WebSocketSrv::instance().Run(wxGetApp().GetPort());
+	WebSocketSrv::instance().Run(port);
 
 	return (wxThread::ExitCode)0;     // success
 }

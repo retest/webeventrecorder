@@ -95,7 +95,10 @@ class WebsocketThread;
 class WevebApp : public wxApp
 {
 public:
+	void InitWebsocketServer();
 	bool InitCefLibrary();
+
+	WevebApp() : web_sock_thread(NULL), main_frame(NULL), actions_manager(NULL), is_hooked(false), port(0) {}
 
     // override base class virtuals
     // ----------------------------
@@ -118,9 +121,10 @@ public:
 	void StartHook() { is_hooked = true; }
 	void StopHook() { is_hooked = false; }
 
-	int GetPort() { return static_cast<int>(port); }
+//	int GetPort() { return static_cast<int>(port); }
 	wxString GetStartUrl() { return start_url; }
 private:
+	WebsocketThread* web_sock_thread;
 	MainFrame* main_frame;	
 	ActionsManager* actions_manager;
 
@@ -192,8 +196,6 @@ private:
 	std::string gui_path;		// path to GUI
 	
 	DWORD cef_thread_id;
-
-	WebsocketThread* web_sock_thread;
 
 	ContentEvent* save_content;
 
@@ -538,8 +540,9 @@ protected:
 
 class WebsocketThread: public wxThread
 {
+	int port;
 public:
-	WebsocketThread() {}
+	WebsocketThread(int port): port(port) {}
 	~WebsocketThread() {}
 protected:
 	virtual ExitCode Entry();

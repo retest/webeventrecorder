@@ -181,6 +181,18 @@ typedef struct _cef_settings_t {
   int multi_threaded_message_loop;
 
   ///
+  // Set to true (1) to control browser process main (UI) thread message pump
+  // scheduling via the CefBrowserProcessHandler::OnScheduleMessagePumpWork()
+  // callback. This option is recommended for use in combination with the
+  // CefDoMessageLoopWork() function in cases where the CEF message loop must be
+  // integrated into an existing application message loop (see additional
+  // comments and warnings on CefDoMessageLoopWork). Enabling this option is not
+  // recommended for most users; leave this option disabled and use either the
+  // CefRunMessageLoop() function or multi_threaded_message_loop if possible.
+  ///
+  int external_message_pump;
+
+  ///
   // Set to true (1) to enable windowless (off-screen) rendering support. Do not
   // enable this value if the application does not use windowless rendering as
   // it may reduce rendering performance on some systems.
@@ -930,11 +942,12 @@ typedef enum {
 } cef_cert_status_t;
 
 ///
-// The manner in which a link click should be opened.
+// The manner in which a link click should be opened. These constants match
+// their equivalents in Chromium's window_open_disposition.h and should not be
+// renumbered.
 ///
 typedef enum {
   WOD_UNKNOWN,
-  WOD_SUPPRESS_OPEN,
   WOD_CURRENT_TAB,
   WOD_SINGLETON_TAB,
   WOD_NEW_FOREGROUND_TAB,
@@ -2622,6 +2635,52 @@ typedef enum {
   CEF_MENU_ANCHOR_TOPRIGHT,
   CEF_MENU_ANCHOR_BOTTOMCENTER,
 } cef_menu_anchor_position_t;
+
+// Supported SSL version values. See net/ssl/ssl_connection_status_flags.h
+// for more information.
+typedef enum {
+  SSL_CONNECTION_VERSION_UNKNOWN = 0,  // Unknown SSL version.
+  SSL_CONNECTION_VERSION_SSL2 = 1,
+  SSL_CONNECTION_VERSION_SSL3 = 2,
+  SSL_CONNECTION_VERSION_TLS1 = 3,
+  SSL_CONNECTION_VERSION_TLS1_1 = 4,
+  SSL_CONNECTION_VERSION_TLS1_2 = 5,
+  // Reserve 6 for TLS 1.3.
+  SSL_CONNECTION_VERSION_QUIC = 7,
+} cef_ssl_version_t;
+
+// Supported SSL content status flags. See content/public/common/ssl_status.h
+// for more information.
+typedef enum {
+  SSL_CONTENT_NORMAL_CONTENT = 0,
+  SSL_CONTENT_DISPLAYED_INSECURE_CONTENT = 1 << 0,
+  SSL_CONTENT_RAN_INSECURE_CONTENT = 1 << 1,
+} cef_ssl_content_status_t;
+
+///
+// Error codes for CDM registration. See cef_web_plugin.h for details.
+///
+typedef enum {
+  ///
+  // No error. Registration completed successfully.
+  ///
+  CEF_CDM_REGISTRATION_ERROR_NONE,
+
+  ///
+  // Required files or manifest contents are missing.
+  ///
+  CEF_CDM_REGISTRATION_ERROR_INCORRECT_CONTENTS,
+
+  ///
+  // The CDM is incompatible with the current Chromium version.
+  ///
+  CEF_CDM_REGISTRATION_ERROR_INCOMPATIBLE,
+
+  ///
+  // CDM registration is not supported at this time.
+  ///
+  CEF_CDM_REGISTRATION_ERROR_NOT_SUPPORTED,
+} cef_cdm_registration_error_t;
 
 #ifdef __cplusplus
 }

@@ -1,4 +1,3 @@
-#include "websock_srv.h"
 
 #include "cef_app.h"
 
@@ -21,11 +20,19 @@ MyCefApp::MyCefApp()
 
 void MyCefApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line)
 {
-	command_line->AppendSwitch("disable-extensions");
+	command_line->AppendArgument("disable-extensions");
 }
 
 void MyCefApp::OnContextInitialized() {
   CEF_REQUIRE_UI_THREAD();
+}
+
+void MyCefApp::OnRenderProcessThreadCreated(CefRefPtr<CefListValue> extra_info)
+{
+	CEF_REQUIRE_IO_THREAD(); 
+
+	extra_info->SetString(0, wxGetApp().GetMainFrame()->GetGuiPath()); // gui path	
+	extra_info->SetString(1, wxGetApp().GetMainFrame()->GetPathForSaving("")); // path for saving
 }
 
 void MyCefApp::StartBrowserOnTab(HWND hwnd, std::string start_url)
@@ -74,12 +81,19 @@ void MyCefApp::StopBrowserOnTab()
 	SimpleHandler::GetInstance()->CloseAllBrowsers(true);
 }
 
+void MyCefApp::OnRenderThreadCreated(CefRefPtr<CefListValue> extra_info)
+{
+	// Read params
+	gui_path = extra_info->GetString(0);
+	saving_path = extra_info->GetString(1);
+}
+
 void MyCefApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context)
 {
 	// Retrieve the context's window object.
 	CefRefPtr<CefV8Value> object = context->GetGlobal();
 	
-	CefRefPtr<CefV8Handler> handler = new MyV8Handler();
+	CefRefPtr<CefV8Handler> handler = new MyV8Handler(saving_path, browser);
 	object->SetValue("cef_js_func",
 		CefV8Value::CreateFunction("cef_js_func", handler),
 		V8_PROPERTY_ATTRIBUTE_NONE);
@@ -96,7 +110,7 @@ void MyCefApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 	static std::string js_init_tracking_code;
 	if (js_init_tracking_code.length() == 0)
 	{
-		std::string js_path = wxGetApp().GetMainFrame()->GetGuiPath();
+		std::string js_path = gui_path;
 		js_path += "//js//css-selector-generator.min.js";
 
 		std::ifstream js_file(js_path);
@@ -115,7 +129,7 @@ void MyCefApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFram
 	static std::string js_init_tracking_focus;
 	if (js_init_tracking_focus.length() == 0)
 	{
-		std::string js_path = wxGetApp().GetMainFrame()->GetGuiPath();
+		std::string js_path = gui_path;
 		js_path += "//js//focushandler.js";
 
 		std::ifstream js_file(js_path);
@@ -142,15 +156,25 @@ bool MyV8Handler::Execute(const CefString& name, CefRefPtr<CefV8Value> object, c
 
 			wxLongLong ts = wxGetLocalTimeMillis();
 			std::string file_name = "js_" + ts.ToString() + ".txt";
-			file_name = wxGetApp().GetMainFrame()->GetPathForSaving(file_name);
+			file_name = saving_path + file_name;
 
 			std::ofstream out(file_name);
 			out << str.ToString();			
 
 			wxString fname = file_name;
 			fname.Replace("\\", "\\\\");
-						
-			WebSocketSrv::instance().SendDate("{\"callback\": \"javascript\", \"file\": \"" + fname.ToStdString() + "\"}");
+					
+			// Create the message object.
+			CefRefPtr<CefProcessMessage> msg = CefProcessMessage::Create("cef_js_func");
+
+			// Retrieve the argument list object.
+			CefRefPtr<CefListValue> args = msg->GetArgumentList();
+
+			// Populate the argument values.
+			args->SetString(0, "{\"callback\": \"javascript\", \"file\": \"" + fname.ToStdString() + "\"}");
+
+			// Send the process message to the browser process.
+			browser->SendProcessMessage(PID_BROWSER, msg);
 			return true;
 		}
 	}
@@ -161,20 +185,22 @@ bool MyV8Handler::Execute(const CefString& name, CefRefPtr<CefV8Value> object, c
 
 		std::string result = arguments[2]->GetStringValue();
 
-		JSClickEvent js_click_event(client_x, client_y, result);
-
-		if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
-			wxGetApp().GetActionsManager().SendJson(js_click_event);
+		CefRefPtr<CefProcessMessage> msg = CefProcessMessage::Create("cef_js_track_mouse");
+		CefRefPtr<CefListValue> args = msg->GetArgumentList();
+		args->SetInt(0, client_x);
+		args->SetInt(1, client_y);
+		args->SetString(2, result);
+		browser->SendProcessMessage(PID_BROWSER, msg);
 		return true;
 	}
 	else if (name == "cef_js_track_focus")
 	{
 		std::string result = arguments[0]->GetStringValue();
 
-		JSFocusEvent js_focus_event(result);
-
-		if (WebSocketSrv::instance().GetState() == WebSocketSrv::WSOCK_OPEN)
-			wxGetApp().GetActionsManager().SendJson(js_focus_event);
+		CefRefPtr<CefProcessMessage> msg = CefProcessMessage::Create("js_focus_event");
+		CefRefPtr<CefListValue> args = msg->GetArgumentList();
+		args->SetString(0, result);
+		browser->SendProcessMessage(PID_BROWSER, msg);
 		return true;
 	}
 

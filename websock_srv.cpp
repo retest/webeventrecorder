@@ -67,13 +67,18 @@ void WebSocketSrv::on_open(server* s, websocketpp::connection_hdl hdl)
 	WebSocketSrv::instance().state = WSOCK_OPEN;
 	WebSocketSrv::instance().con_hdl = hdl;
 
-	wxGetApp().GetMainFrame()->OpenConnect();
+	auto m_fraim = wxGetApp().GetMainFrame();
+	if (m_fraim)
+		m_fraim->OpenConnect();
 }
 
 void WebSocketSrv::on_close(server* s, websocketpp::connection_hdl hdl)
 {
 	WebSocketSrv::instance().state = WSOCK_CLOSE;
-	wxGetApp().GetMainFrame()->CloseConnect();
+
+	auto m_fraim = wxGetApp().GetMainFrame();
+	if (m_fraim)
+		m_fraim->CloseConnect();
 }
 
 void WebSocketSrv::SendDate(std::string json_date)

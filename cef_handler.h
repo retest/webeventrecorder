@@ -122,6 +122,13 @@ public:
 									CefRefPtr<CefRequest> request,
 									CefRefPtr<CefResponse> response) OVERRIDE;
 
+	// Called when a new message is received from a different process. Return true
+	// if the message was handled or false otherwise. Do not keep a reference to
+	// or attempt to access the message outside of this callback.
+	virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
+										  CefProcessId source_process,
+										  CefRefPtr<CefProcessMessage> message) OVERRIDE;
+
 	// Request that all existing browser windows close.
 	void CloseAllBrowsers(bool force_close);
 
